@@ -47,7 +47,7 @@ typedef unsigned long DWORD;
 #include <string.h>
 #include <time.h>
 
-#define APP_VERSION      "1.1.0"
+#define APP_VERSION      "0.1.0"
 #define DEFAULT_WG_VER   "0.5.3"
 #define WG_BASE_URL      "https://download.wireguard.com/windows-client/"
 #define TUN_GAMEPC       "tgui"          /* 게임 PC 쪽 터널 이름 */

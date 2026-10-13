@@ -36,8 +36,9 @@ gh attestation verify TunnelingGUI-<tag>-windows-x64.zip --repo packetresult-cmd
 
 Every release is built by GitHub Actions from a tagged commit in this repository
 and carries a signed build provenance attestation, so that command tells you
-which commit and which workflow run produced the file you downloaded. Each
-release also ships `SHA256SUMS.txt`.
+which commit and which workflow run produced the file you downloaded. The one
+exception is v0.1.0, published before the repository was public, which has no
+attestation. Each release also ships `SHA256SUMS.txt`.
 
 What the program actually downloads at runtime is the official WireGuard
 installer, and only after verifying its Authenticode signature. Nothing else is

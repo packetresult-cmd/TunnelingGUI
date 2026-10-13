@@ -109,7 +109,10 @@ jobs:
 
       # Signed, verifiable record of which commit and workflow produced each file.
       # Users check it with:  gh attestation verify <file> --repo <owner>/<repo>
+      # GitHub only issues attestations for private repositories on Enterprise
+      # Cloud, so the step is skipped while the repository is private.
       - uses: actions/attest-build-provenance@v2
+        if: ${{ !github.event.repository.private }}
         with:
           subject-path: 'out/*.zip, out/*.tar.gz'
 
@@ -117,6 +120,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.pack.outputs.tag }}
+          ATTESTED: ${{ !github.event.repository.private }}
         run: |
           cat > notes.md <<'EOF'
           Run a game server on a home PC and have it appear on the public internet at
@@ -145,11 +149,26 @@ jobs:
           These binaries are not code-signed, and the program asks for administrator
           rights and reconfigures network interfaces, so SmartScreen and some antivirus
           products flag it. Nothing here is hidden: every file was built by GitHub
-          Actions from this tag, and you can verify that yourself.
+          Actions from this tag.
+          EOF
+          if [ "$ATTESTED" = "true" ]; then
+            cat >> notes.md <<'EOF'
+
+          You can verify which commit and workflow run produced a file yourself:
 
           ```
           gh attestation verify TunnelingGUI-<tag>-windows-x64.zip --repo packetresult-cmd/TunnelingGUI
           ```
+          EOF
+          else
+            cat >> notes.md <<'EOF'
+
+          This release predates build provenance attestations, so
+          `gh attestation verify` does not apply to it; compare against the
+          checksums below or build the same tag from source.
+          EOF
+          fi
+          cat >> notes.md <<'EOF'
 
           `SHA256SUMS.txt` lists the checksums. The source is in this repository and
           builds with nothing but CMake and a C compiler.
