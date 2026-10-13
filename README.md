@@ -63,9 +63,14 @@ correctly if that folder is missing or damaged.
 - Switch language with the button in the top-right corner. The choice is remembered.
 - Or force one: `tgui-gui --lang ko`, or set `TGUI_LANG=ko`.
 
-**Adding a language needs no C code.** Copy `lang/en.json`, translate the values, and save it
-as `lang/<code>.json` — the GUI picks it up on the next start, and `_name` is what the language
-button shows.
+**Adding or adjusting a language needs no C code.** Copy `lang/en.json`, translate the values,
+and save it as `lang/<code>.json` — the GUI picks it up on the next start, and `_name` is what
+the language button shows. `lang/en.json` works the same way: edit it to reword or shorten the
+English UI without rebuilding. The compiled-in table is only the fallback for whatever a file
+does not provide.
+
+Keep labels short. The panels split into fixed halves, so a checkbox label much over ~27
+characters will overlap its neighbour or run off the edge.
 
 One rule: **keep the `%s` / `%d` placeholders exactly as English has them, in the same order.**
 This is a C program, so a swapped or missing placeholder would be undefined behaviour. Entries

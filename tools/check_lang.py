@@ -126,8 +126,14 @@ def main() -> int:
                 )
 
         missing = sorted(set(english) - set(data))
-        if code == "en" and english != data:
-            file_errors.append("  out of sync with gui/i18n.c - run: python3 tools/check_lang.py --write-en")
+        if code == "en":
+            # en.json overrides the built-in table at runtime, so it is allowed to
+            # differ - that is how English wording is tuned without a rebuild. Only
+            # say so, since a large drift means the compiled-in fallback is stale.
+            drift = sum(1 for k, v in data.items() if k in english and english[k] != v)
+            if drift:
+                print(f"{path.name}: note - {drift} entries differ from the built-in table in gui/i18n.c")
+                print("  that is fine (en.json wins at runtime); run --write-en to resync the fallback")
 
         if file_errors:
             print(f"{path.name}: FAIL")

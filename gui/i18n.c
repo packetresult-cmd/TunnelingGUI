@@ -56,21 +56,21 @@ static const Pair EN[] = {
     { "ports.title",            "Open ports (VPS public IP -> game PC)" },
     { "ports.p7777",            "7777  Game (UDP)" },
     { "ports.p7778",            "7778  Raw UDP (UDP)" },
-    { "ports.p27015",           "27015  Server list query (UDP)" },
-    { "ports.p27020",           "27020  RCON (TCP, optional)" },
+    { "ports.p27015",           "27015  Server query (UDP)" },
+    { "ports.p27020",           "27020  RCON (TCP)" },
     { "ports.extraudp",         "Extra UDP ports (lists and ranges, up to 256)" },
     { "ports.extraudp.hint",    "e.g. 7779-7782,27016-27017  (several servers)" },
     { "ports.extratcp",         "Extra TCP ports" },
     { "ports.extratcp.hint",    "e.g. 27021" },
-    { "ports.udpcount",         "Open UDP, %d: %s" },
-    { "ports.tcpcount",         "Open TCP, %d: %s" },
+    { "ports.udpcount",         "Open UDP (%d): %s" },
+    { "ports.tcpcount",         "Open TCP (%d): %s" },
     { "ports.none",             "(none)" },
     { "ports.nonebare",         "none" },
     { "ports.applied",          "Currently applied (%s): UDP %s / TCP %s" },
-    { "ports.notapplied",       "Nothing applied yet (settings are saved when you install)" },
+    { "ports.notapplied",       "Nothing applied yet" },
     { "ports.apply",            "Apply port changes only" },
     { "ports.apply.task",       "Port change" },
-    { "ports.note",             "After changing ports, open the same ports on the VPS, on the game PC, and in your cloud firewall (Azure NSG and the like)." },
+    { "ports.note",             "Open the same ports on the VPS, the game PC and your cloud firewall." },
     { "ports.err.udp",          "Extra UDP: %s" },
     { "ports.err.tcp",          "Extra TCP: %s" },
     { "ports.err.fix",          "Fix the port input first." },
@@ -89,12 +89,12 @@ static const Pair EN[] = {
     { "vps.ports",              "Show ports" },
     { "vps.status.task",        "VPS status" },
     { "vps.ports.task",         "Show ports" },
-    { "vps.purge",              "Delete keys and settings too" },
-    { "vps.disablerouting",     "Turn IP forwarding off" },
+    { "vps.purge",              "Delete keys too" },
+    { "vps.disablerouting",     "Disable IP forwarding" },
     { "vps.uninstall",          "Remove VPS configuration" },
     { "vps.uninstall.task",     "VPS removal" },
     { "vps.uninstall.confirm",  "Have you already stopped or removed the tunnel on the game PC?\nRemoving the VPS first will cut the game PC's internet connection." },
-    { "vps.note",               "A Linux VPS is recommended (Windows needs WinNAT). Allow the WireGuard port and everything under 'Open ports' in your cloud firewall." },
+    { "vps.note",               "A Linux VPS is recommended (Windows needs WinNAT). Allow the WireGuard port and the 'Open ports' list in your cloud firewall." },
 
     /* Game PC tab */
     { "gamepc.title",           "Game PC (game server)" },
@@ -113,18 +113,18 @@ static const Pair EN[] = {
     { "gamepc.status",          "Show status" },
     { "gamepc.down.task",       "Tunnel down" },
     { "gamepc.status.task",     "Game PC status" },
-    { "gamepc.keepconfig",      "Keep the settings folder (private key)" },
+    { "gamepc.keepconfig",      "Keep settings folder (private key)" },
     { "gamepc.uninstall",       "Remove game PC configuration" },
     { "gamepc.uninstall.task",  "Game PC removal" },
     { "gamepc.uninstall.confirm", "Have you stopped the game server first?\nRemoving this drops the server from the Steam list." },
-    { "gamepc.note",            "Add MultiHome=10.8.0.2 to the server's launch arguments. Use 'Tunnel down' to return to your home connection when you are not hosting." },
+    { "gamepc.note",            "Add MultiHome=10.8.0.2 to the server's launch arguments. 'Tunnel down' returns you to your home connection." },
 
     /* Verify tab */
     { "verify.title",           "Verify (server query / Steam list)" },
     { "verify.target",          "Address to check" },
     { "verify.target.hint",     "10.8.0.2 from the VPS, the VPS public IP from outside" },
     { "verify.qport",           "Query port" },
-    { "verify.steamkey",        "Steam Web API key (optional, checks Steam list registration)" },
+    { "verify.steamkey",        "Steam Web API key (optional)" },
     { "verify.run",             "Run verification" },
     { "verify.task",            "Verification" },
     { "verify.badfield",        "Check the format of the address, port and API key." },
@@ -412,16 +412,29 @@ static void add_lang(const char *code, const char *name)
     g_nlangs++;
 }
 
+/* English is treated like any other language: lang/en.json overrides the built-in
+   table entry by entry, so wording and length can be tuned without rebuilding.
+   The built-in table stays as the fallback, which is why English can never fail:
+   a missing or broken en.json simply leaves the compiled-in text in place. */
 bool i18n_set(const char *code)
 {
     char path[1200], name[64] = "";
+    bool is_en = code && !strcmp(code, "en");
     char *txt;
+
     if (!code || !*code) return false;
     table_reset();
-    if (!strcmp(code, "en")) { strncpy(g_lang, "en", sizeof g_lang - 1); return true; }
+
     snprintf(path, sizeof path, "%s%s.json", g_dir, code);
-    if (!(txt = read_whole(path))) return false;
-    if (!i18n_parse(txt, accept_pair, NULL)) { free(txt); table_reset(); return false; }
+    txt = read_whole(path);
+    if (!txt || !i18n_parse(txt, accept_pair, NULL)) {
+        free(txt);
+        table_reset();                       /* a partial parse must not be kept */
+        if (!is_en) return false;
+        strncpy(g_lang, "en", sizeof g_lang - 1);
+        g_lang[sizeof g_lang - 1] = 0;
+        return true;
+    }
     i18n_parse(txt, grab_name, name);
     free(txt);
     strncpy(g_lang, code, sizeof g_lang - 1);
