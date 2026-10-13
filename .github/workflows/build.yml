@@ -49,7 +49,18 @@ jobs:
       - name: Smoke test
         run: ./build/tgui help | head -5
       - name: Regression test (stubbed kernel/network tools)
-        run: sudo tests/linux/run.sh build/tgui
+        run: |
+          echo "wg: $(command -v wg || echo MISSING)  gcc: $(command -v gcc || echo MISSING)"
+          set +e
+          sudo tests/linux/run.sh build/tgui 2>&1 | tee /tmp/test.log
+          rc=${PIPESTATUS[0]}
+          # The raw run log is not always reachable, so put the tail on the run
+          # summary as annotations when the suite fails.
+          if [ $rc -ne 0 ]; then
+            echo "::error::regression test exited $rc"
+            tail -25 /tmp/test.log | while IFS= read -r l; do echo "::error::$l"; done
+          fi
+          exit $rc
       - uses: actions/upload-artifact@v4
         with:
           name: tgui-linux-x86_64
@@ -191,7 +202,16 @@ jobs:
           cmake -S . -B build -G Ninja -DTGUI_BUILD_GUI=ON
           cmake --build build
       - name: GUI test (offscreen, stubbed network tools)
-        run: sudo tests/gui/run.sh build/tgui-gui screenshots
+        run: |
+          echo "wg: $(command -v wg || echo MISSING)  gcc: $(command -v gcc || echo MISSING)"
+          set +e
+          sudo tests/gui/run.sh build/tgui-gui screenshots 2>&1 | tee /tmp/gui.log
+          rc=${PIPESTATUS[0]}
+          if [ $rc -ne 0 ]; then
+            echo "::error::gui test exited $rc"
+            tail -25 /tmp/gui.log | while IFS= read -r l; do echo "::error::$l"; done
+          fi
+          exit $rc
       - uses: actions/upload-artifact@v4
         if: always()
         with:
