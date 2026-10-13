@@ -9,7 +9,26 @@ BIN=$(dirname "$GUI")/tgui           # GUI 는 같은 폴더의 CLI 를 실행�
 . "$(cd "$(dirname "$0")/../linux" && pwd)/stubs.sh"
 mkdir -p "$OUT"
 
-gui() { PATH="$T/bin:$PATH" LD_PRELOAD="$T/shim.so" SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software timeout 120 "$GUI" "$@" >/dev/null 2>&1; }
+GUILOG=$T/gui.log
+# Keep the GUI's own output: when it exits early (no font, no video driver, ...)
+# this is the only place that says why.
+gui() {
+  PATH="$T/bin:$PATH" LD_PRELOAD="$T/shim.so" SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software \
+    timeout 120 "$GUI" "$@" >>"$GUILOG" 2>&1
+  rc=$?
+  if [ $rc -ne 0 ]; then
+    echo "  (gui exited $rc, output follows)"
+    tail -20 "$GUILOG" | sed 's/^/    /'
+    [ -n "${GITHUB_ACTIONS:-}" ] && echo "::error::gui exited $rc: $(tail -3 "$GUILOG" | tr '\n' ' ')"
+  fi
+  return $rc
+}
+
+echo "== environment"
+echo "  gui   : $GUI"
+echo "  cli   : $BIN ($([ -x "$BIN" ] && echo found || echo MISSING))"
+echo "  lang  : $(ls "$(dirname "$GUI")/lang" 2>/dev/null | tr '\n' ' ')"
+echo "  fonts : $(fc-list 2>/dev/null | grep -ciE 'nanum|noto sans cjk') CJK font(s)"
 
 echo "== GUI 로 vps-setup 실행 (범위 포트)"
 gui --exec "vps-setup -public-ip 203.0.113.5 -udp 7777-7790,27015 -tcp -" --screenshot "$OUT/gui-vps-setup.png"

@@ -8,7 +8,9 @@ IFDIR=$T/ifs; mkdir -p "$IFDIR" "$T/bin"
 REAL_WG=$(command -v wg) || { echo "wg 가 필요합니다"; exit 1; }
 fail=0
 ok()   { echo "  ok   - $1"; }
-bad()  { echo "  FAIL - $1"; fail=1; }
+# On GitHub Actions also emit an annotation, so a failure is visible without
+# digging through the raw log.
+bad()  { echo "  FAIL - $1"; [ -n "${GITHUB_ACTIONS:-}" ] && echo "::error::$1"; fail=1; }
 check(){ if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 
 cleanup() { rm -rf /etc/tgui /etc/wireguard/tgui.conf /etc/wireguard/tgui-gw.conf /etc/sysctl.d/99-tgui.conf "$T"; }
