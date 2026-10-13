@@ -17,32 +17,35 @@ missing, and **elevates itself** when it needs more privilege (UAC on Windows, `
 
 <sub>More: [Game PC tab](docs/images/gamepc-tab.png) · [Verify tab](docs/images/verify-tab.png) · [Korean UI](docs/images/vps-tab-ko.png)</sub>
 
-## Download
+## Building
 
-Prebuilt binaries are on the [releases page](../../releases). Take
-`windows-x64.zip`, unzip it, and run `tgui-gui.exe`; keep `tgui.exe` and `lang/`
-beside it. Or build from source — it needs only CMake and a C compiler.
+There are no prebuilt binaries yet — build it yourself. It needs only CMake and
+a C compiler, and the CLI has no external dependencies:
 
-### Windows will warn you about these binaries
+```bash
+cmake -S . -B build && cmake --build build      # -> build/tgui
+```
 
-They are not code-signed, and the program requests administrator rights and
-reconfigures network interfaces, which is the exact profile SmartScreen and
-antivirus heuristics look for. Expect a warning, and do not take anyone's word
-that the file is safe — check it:
+Add `-DTGUI_BUILD_GUI=ON` for the GUI, which fetches SDL3 and SDL3_ttf. Windows
+builds, cross-compiling from Linux and the full dependency list are in the
+[build guide](docs/BUILD.md).
+
+When binaries are published they will appear on the
+[releases page](../../releases). They will not be code-signed, and the program
+requests administrator rights and reconfigures network interfaces, which is the
+exact profile SmartScreen and antivirus heuristics look for — so expect a
+warning. Rather than asking anyone to trust a download, every release is built
+by GitHub Actions from a tagged commit here and carries a signed build
+provenance attestation, which anyone can check:
 
 ```
 gh attestation verify TunnelingGUI-<tag>-windows-x64.zip --repo packetresult-cmd/TunnelingGUI
 ```
 
-Every release is built by GitHub Actions from a tagged commit in this repository
-and carries a signed build provenance attestation, so that command tells you
-which commit and which workflow run produced the file you downloaded. The one
-exception is v0.1.0, published before the repository was public, which has no
-attestation. Each release also ships `SHA256SUMS.txt`.
+Releases also ship `SHA256SUMS.txt`.
 
-What the program actually downloads at runtime is the official WireGuard
-installer, and only after verifying its Authenticode signature. Nothing else is
-fetched.
+What the program downloads at runtime is the official WireGuard installer, and
+only after verifying its Authenticode signature. Nothing else is fetched.
 
 ## Requirements
 
