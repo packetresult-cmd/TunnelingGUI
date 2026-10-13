@@ -17,6 +17,32 @@ missing, and **elevates itself** when it needs more privilege (UAC on Windows, `
 
 <sub>More: [Game PC tab](docs/images/gamepc-tab.png) · [Verify tab](docs/images/verify-tab.png) · [Korean UI](docs/images/vps-tab-ko.png)</sub>
 
+## Download
+
+Prebuilt binaries are on the [releases page](../../releases). Take
+`windows-x64.zip`, unzip it, and run `tgui-gui.exe`; keep `tgui.exe` and `lang/`
+beside it. Or build from source — it needs only CMake and a C compiler.
+
+### Windows will warn you about these binaries
+
+They are not code-signed, and the program requests administrator rights and
+reconfigures network interfaces, which is the exact profile SmartScreen and
+antivirus heuristics look for. Expect a warning, and do not take anyone's word
+that the file is safe — check it:
+
+```
+gh attestation verify TunnelingGUI-<tag>-windows-x64.zip --repo packetresult-cmd/TunnelingGUI
+```
+
+Every release is built by GitHub Actions from a tagged commit in this repository
+and carries a signed build provenance attestation, so that command tells you
+which commit and which workflow run produced the file you downloaded. Each
+release also ships `SHA256SUMS.txt`.
+
+What the program actually downloads at runtime is the official WireGuard
+installer, and only after verifying its Authenticode signature. Nothing else is
+fetched.
+
 ## Requirements
 
 - **A VPS with a dedicated, static public IPv4 address.** The provider must not restrict which ports

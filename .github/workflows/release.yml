@@ -1,0 +1,160 @@
+name: release
+
+# Tag a version to publish binaries:  git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (must already exist)'
+        required: true
+
+permissions:
+  contents: write        # create the release
+  id-token: write        # sign the build provenance
+  attestations: write    # record it
+
+jobs:
+  windows-cli:
+    name: Windows CLI (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { arch: x64, triplet: x86_64-w64-mingw32, pkg: gcc-mingw-w64-x86-64 }
+          - { arch: x86, triplet: i686-w64-mingw32,   pkg: gcc-mingw-w64-i686 }
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build ${{ matrix.pkg }}
+      - run: |
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake \
+                -DMINGW_TRIPLET=${{ matrix.triplet }}
+          cmake --build build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-windows-${{ matrix.arch }}
+          path: build/tgui.exe
+
+  windows-gui:
+    name: Windows GUI (x64, MSVC)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CLI + GUI
+        run: |
+          cmake -S . -B build -A x64 -DTGUI_BUILD_GUI=ON
+          cmake --build build --config Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-windows-x64
+          path: |
+            build/Release/tgui.exe
+            build/Release/tgui-gui.exe
+
+  linux-cli:
+    name: Linux CLI (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build gcc
+      - run: cmake -S . -B build -G Ninja && cmake --build build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux-x86_64
+          path: build/tgui
+
+  publish:
+    name: Package and publish
+    needs: [windows-cli, windows-gui, linux-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: art }
+
+      - name: Assemble packages
+        id: pack
+        run: |
+          set -eux
+          TAG="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          mkdir -p out
+
+          # Windows x64: CLI + GUI + language files + docs
+          mkdir -p pkg/win-x64
+          cp art/gui-windows-x64/tgui.exe art/gui-windows-x64/tgui-gui.exe pkg/win-x64/
+          cp -r lang pkg/win-x64/
+          cp README.md LICENSE pkg/win-x64/
+          cp docs/USAGE.md pkg/win-x64/USAGE.md
+          (cd pkg/win-x64 && zip -qr "../../out/TunnelingGUI-$TAG-windows-x64.zip" .)
+
+          # Windows x86: CLI only (the GUI is built 64-bit)
+          mkdir -p pkg/win-x86
+          cp art/cli-windows-x86/tgui.exe pkg/win-x86/
+          cp README.md LICENSE pkg/win-x86/
+          cp docs/USAGE.md pkg/win-x86/USAGE.md
+          (cd pkg/win-x86 && zip -qr "../../out/TunnelingGUI-$TAG-windows-x86-cli.zip" .)
+
+          # Linux CLI
+          mkdir -p pkg/linux
+          cp art/cli-linux-x86_64/tgui pkg/linux/
+          chmod +x pkg/linux/tgui
+          cp README.md LICENSE pkg/linux/
+          cp docs/USAGE.md pkg/linux/USAGE.md
+          tar -C pkg/linux -czf "out/TunnelingGUI-$TAG-linux-x86_64.tar.gz" .
+
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          ls -la out
+
+      # Signed, verifiable record of which commit and workflow produced each file.
+      # Users check it with:  gh attestation verify <file> --repo <owner>/<repo>
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'out/*.zip, out/*.tar.gz'
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pack.outputs.tag }}
+        run: |
+          cat > notes.md <<'EOF'
+          Run a game server on a home PC and have it appear on the public internet at
+          your VPS's IP address, over a WireGuard full tunnel. No router port
+          forwarding; works behind CGNAT.
+
+          ### Which file
+
+          | File | What it is |
+          |---|---|
+          | `windows-x64.zip` | GUI + CLI. **Start here.** |
+          | `windows-x86-cli.zip` | 32-bit CLI, for 32-bit Windows only |
+          | `linux-x86_64.tar.gz` | CLI, for a Linux VPS |
+
+          Unzip and run `tgui-gui.exe`. Keep `tgui.exe` and `lang/` in the same folder.
+          Setup, port choices and troubleshooting are in `USAGE.md`.
+
+          ### Requirements
+
+          A VPS with a **dedicated, static public IPv4 address**, no port restrictions
+          and UDP allowed. Shared-IP "NAT VPS" plans will not work. A Linux VPS is
+          recommended.
+
+          ### Windows will warn you
+
+          These binaries are not code-signed, and the program asks for administrator
+          rights and reconfigures network interfaces, so SmartScreen and some antivirus
+          products flag it. Nothing here is hidden: every file was built by GitHub
+          Actions from this tag, and you can verify that yourself.
+
+          ```
+          gh attestation verify TunnelingGUI-<tag>-windows-x64.zip --repo packetresult-cmd/TunnelingGUI
+          ```
+
+          `SHA256SUMS.txt` lists the checksums. The source is in this repository and
+          builds with nothing but CMake and a C compiler.
+          EOF
+          gh release create "$TAG" out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "TunnelingGUI $TAG" \
+            --notes-file notes.md
