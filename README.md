@@ -13,6 +13,10 @@ missing, and **elevates itself** when it needs more privilege (UAC on Windows, `
                               all IPv4 traffic from the game PC also exits via the VPS
 ```
 
+![VPS tab](docs/images/vps-tab.png)
+
+<sub>More: [Game PC tab](docs/images/gamepc-tab.png) · [Verify tab](docs/images/verify-tab.png) · [Korean UI](docs/images/vps-tab-ko.png)</sub>
+
 ## Requirements
 
 - **A VPS with a dedicated, static public IPv4 address.** The provider must not restrict which ports
@@ -70,7 +74,13 @@ English UI without rebuilding. The compiled-in table is only the fallback for wh
 does not provide.
 
 Keep labels short. The panels split into fixed halves, so a checkbox label much over ~27
-characters will overlap its neighbour or run off the edge.
+characters will overlap its neighbour or run off the edge. To see your changes without a
+Windows machine, build the GUI on Linux and render it headless:
+
+```bash
+SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software \
+  ./tgui-gui --demo --tab 0 --lang en --screenshot shot.png
+```
 
 One rule: **keep the `%s` / `%d` placeholders exactly as English has them, in the same order.**
 This is a C program, so a swapped or missing placeholder would be undefined behaviour. Entries

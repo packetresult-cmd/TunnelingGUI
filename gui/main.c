@@ -308,6 +308,13 @@ static float wrap_text(App *a, float x, float y, float w, const char *s, Col c)
     while (pos < len) {
         size_t n = ui_fit(ui, s + pos, len - pos, (int)w);
         if (n == 0) n = 1;
+        /* Break at a space rather than mid-word. Scripts written without spaces
+           (CJK) find none and keep the measured break, which is correct for them. */
+        if (pos + n < len && s[pos + n] != ' ') {
+            size_t b = n;
+            while (b > 0 && s[pos + b - 1] != ' ') b--;
+            if (b > 0) n = b;
+        }
         if (n >= sizeof line) n = sizeof line - 1;
         SDL_memcpy(line, s + pos, n);
         line[n] = 0;

@@ -26,7 +26,7 @@
   "ports.title": "열 포트 (VPS 공인 IP -> 게임 PC 로 전달)",
   "ports.p7777": "7777  게임 (UDP)",
   "ports.p7778": "7778  Raw UDP (UDP)",
-  "ports.p27015": "27015  서버 목록 쿼리 (UDP)",
+  "ports.p27015": "27015  서버 쿼리 (UDP)",
   "ports.p27020": "27020  RCON (TCP, 선택)",
   "ports.extraudp": "추가 UDP 포트 (여러 개·범위 가능, 최대 256개)",
   "ports.extraudp.hint": "예: 7779-7782,27016-27017  (서버 여러 대)",
