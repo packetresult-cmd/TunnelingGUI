@@ -18,6 +18,9 @@
 #include "runner.h"
 #include "ui.h"
 
+#ifndef TGUI_VERSION                       /* CMake passes the project version in */
+#  define TGUI_VERSION "0.1.0"
+#endif
 #define APP_TITLE     "TunnelingGUI"
 #define LOG_MAX_LINES 3000
 
@@ -806,7 +809,7 @@ int main(int argc, char **argv)
         else if (!SDL_strcmp(argv[i], "--lang") && i + 1 < argc) arg_lang = argv[++i];
     }
 
-    SDL_SetAppMetadata(APP_TITLE, "1.2.0", "com.tunnelinggui.app");
+    SDL_SetAppMetadata(APP_TITLE, TGUI_VERSION, "com.tunnelinggui.app");
     if (!SDL_Init(SDL_INIT_VIDEO)) { SDL_Log("SDL_Init: %s", SDL_GetError()); return 1; }
     if (!TTF_Init()) { SDL_Log("TTF_Init: %s", SDL_GetError()); return 1; }
 
