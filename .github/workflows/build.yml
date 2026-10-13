@@ -1,0 +1,236 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-cross:
+    name: Linux -> Windows (MinGW-w64 cross)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        triplet: [x86_64-w64-mingw32, i686-w64-mingw32]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DMINGW_TRIPLET=${{ matrix.triplet }}
+          cmake --build build
+      - name: Check manifest is embedded
+        run: strings build/tgui.exe | grep -q requireAdministrator
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tgui-${{ matrix.triplet }}
+          path: build/tgui.exe
+
+  linux-native:
+    name: Linux native + regression test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate lang/*.json (placeholders must match English)
+        run: python3 tools/check_lang.py
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build gcc wireguard-tools
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja
+          cmake --build build
+      - name: Smoke test
+        run: ./build/tgui help | head -5
+      - name: Regression test (stubbed kernel/network tools)
+        run: sudo tests/linux/run.sh build/tgui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tgui-linux-x86_64
+          path: build/tgui
+
+  windows-mingw:
+    name: Windows native (MinGW-w64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        shell: bash
+        env:
+          CC: gcc
+        run: |
+          cmake -S . -B build -G Ninja
+          cmake --build build
+      - name: Smoke test
+        shell: bash
+        run: ./build/tgui.exe help | head -5
+      - name: vps-check on a real Windows runner (informational)
+        shell: bash
+        continue-on-error: true
+        run: ./build/tgui.exe vps-check
+
+  windows-msvc:
+    name: Windows native (MSVC ${{ matrix.arch }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, Win32]     # Win32 = 32비트 exe: 64비트 PowerShell(Sysnative)로 vps-check 가 통과해야 한다
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          cmake -S . -B build -A ${{ matrix.arch }}
+          cmake --build build --config Release
+      - name: Smoke test
+        run: .\build\Release\tgui.exe help
+      - name: vps-check (real PowerShell, must pass for both 32- and 64-bit exe)
+        run: .\build\Release\tgui.exe vps-check
+      - name: Evidence - Get-NetNat in 64-bit vs 32-bit (SysWOW64) Windows PowerShell
+        if: matrix.arch == 'x64'
+        continue-on-error: true
+        shell: powershell
+        run: |
+          Write-Host "--- 64-bit PowerShell"
+          try { Get-NetNat | Out-Null; Write-Host "Get-NetNat: OK" } catch { Write-Host "Get-NetNat FAILED: $($_.FullyQualifiedErrorId) / $($_.Exception.Message)" }
+          Write-Host "--- 32-bit PowerShell (SysWOW64)"
+          & "$env:windir\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "try { Get-NetNat | Out-Null; 'Get-NetNat: OK' } catch { 'Get-NetNat FAILED: ' + `$_.FullyQualifiedErrorId + ' / ' + `$_.Exception.Message }"
+
+  # 실제 Windows 에서 처음 상태(WireGuard 미설치)부터 전체 흐름을 돌린다:
+  # WireGuard 자동 설치(MSI) → 서버 터널 서비스 → 포워딩/WinNAT/방화벽 → 상태 → 제거
+  windows-e2e:
+    name: Windows end-to-end (${{ matrix.toolchain }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: msvc
+            configure: cmake -S . -B build -A x64
+            exe: build\Release\tgui.exe
+          - toolchain: mingw
+            configure: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc
+            exe: build\tgui.exe
+    env:
+      EXE: ${{ matrix.exe }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          ${{ matrix.configure }}
+          cmake --build build --config Release
+      - name: WireGuard is not installed yet
+        run: if (Test-Path "$env:ProgramFiles\WireGuard\wg.exe") { Write-Host "already installed" } else { Write-Host "not installed (fresh)" }
+      - name: vps-setup (auto-installs WireGuard, then uses it)
+        run: '& $env:EXE vps-setup -public-ip 203.0.113.5 -udp 7777,27015'
+      - name: vps-status
+        run: '& $env:EXE vps-status'
+      - name: wg show (tunnel is up and readable)
+        run: '& "$env:ProgramFiles\WireGuard\wg.exe" show tgui-gw'
+      - name: WinNAT and static mappings exist
+        run: |
+          Get-NetNat -Name TunnelingGUI | Format-List Name,InternalIPInterfaceAddressPrefix
+          Get-NetNatStaticMapping -NatName TunnelingGUI | Format-Table Protocol,ExternalPort,InternalIPAddress,InternalPort
+      - name: vps-setup again without -udp (ports come from settings.conf)
+        run: '& $env:EXE vps-setup -public-ip 203.0.113.5'
+      - name: ports (show)
+        run: '& $env:EXE ports'
+      - name: ports change to a range + more than 3 ports
+        run: '& $env:EXE ports -udp 7777-7790,27015-27016 -tcp 27020'
+      - name: NAT has 16 UDP + 1 TCP mappings, firewall rule has the range
+        run: |
+          $m = @(Get-NetNatStaticMapping -NatName TunnelingGUI)
+          $u = @($m | Where-Object Protocol -eq 'UDP').Count; $t = @($m | Where-Object Protocol -eq 'TCP').Count
+          Write-Host "UDP=$u TCP=$t"
+          if ($u -ne 16 -or $t -ne 1) { throw "unexpected mapping count" }
+          $f = Get-NetFirewallRule -DisplayName 'TunnelingGUI - Game UDP' | Get-NetFirewallPortFilter
+          Write-Host "firewall LocalPort: $($f.LocalPort -join ',')"
+          if (-not ($f.LocalPort -contains '7777-7790')) { throw "range missing in firewall rule" }
+          Get-Content "$env:ProgramData\TunnelingGUI\settings.conf"
+      - name: Keep client config for game-PC test
+        run: Copy-Item "$env:ProgramData\TunnelingGUI\client-gamepc.conf" "$env:RUNNER_TEMP\client-gamepc.conf"
+      - name: vps-uninstall
+        run: '& $env:EXE vps-uninstall -force -purge -disable-routing'
+      - name: Everything removed
+        run: |
+          if (Get-Service 'WireGuardTunnel$tgui-gw' -ErrorAction SilentlyContinue) { throw "tunnel service still exists" }
+          if (Get-NetNat -Name TunnelingGUI -ErrorAction SilentlyContinue) { throw "NAT still exists" }
+          if (Test-Path "$env:ProgramData\TunnelingGUI") { throw "work dir still exists" }
+          Write-Host "clean"
+      - name: gamepc-install / status / uninstall (tunnel not started on the runner)
+        run: |
+          & $env:EXE gamepc-install -config "$env:RUNNER_TEMP\client-gamepc.conf"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $env:EXE gamepc-status
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $env:EXE gamepc-uninstall -force
+      - name: WireGuard log (always)
+        if: always()
+        run: if (Test-Path "$env:ProgramFiles\WireGuard\wireguard.exe") { & "$env:ProgramFiles\WireGuard\wireguard.exe" /dumplog | Select-Object -Last 60 }
+
+  # SDL3 GUI: Linux 에서는 오프스크린으로 GUI → CLI 실행까지 검증하고 화면 캡처를 남긴다
+  gui-linux:
+    name: GUI (Linux, SDL3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps + Korean font
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc wireguard-tools fonts-nanum \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgl-dev
+      - name: Build CLI + GUI (SDL3/SDL3_ttf fetched from libsdl-org)
+        run: |
+          cmake -S . -B build -G Ninja -DTGUI_BUILD_GUI=ON
+          cmake --build build
+      - name: GUI test (offscreen, stubbed network tools)
+        run: sudo tests/gui/run.sh build/tgui-gui screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gui-linux-screenshots
+          path: screenshots/*.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tgui-gui-linux-x86_64
+          path: |
+            build/tgui
+            build/tgui-gui
+
+  gui-windows:
+    name: GUI (Windows MSVC, SDL3)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CLI + GUI
+        run: |
+          cmake -S . -B build -A x64 -DTGUI_BUILD_GUI=ON
+          cmake --build build --config Release
+      - name: GUI runs the CLI and renders (offscreen)
+        shell: powershell
+        run: |
+          $env:SDL_VIDEO_DRIVER = "offscreen"; $env:SDL_RENDER_DRIVER = "software"
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $gui = "build\Release\tgui-gui.exe"
+          Start-Process -Wait -NoNewWindow -FilePath $gui -ArgumentList '--exec','"vps-check"','--screenshot','screenshots\gui-vps-check.png'
+          Start-Process -Wait -NoNewWindow -FilePath $gui -ArgumentList '--demo','--tab','1','--screenshot','screenshots\gui-gamepc.png'
+          Get-ChildItem screenshots
+          if (-not (Test-Path screenshots\gui-vps-check.png) -or -not (Test-Path screenshots\gui-gamepc.png)) { throw "screenshot missing" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gui-windows-screenshots
+          path: screenshots/*.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tgui-windows-x64
+          path: |
+            build/Release/tgui.exe
+            build/Release/tgui-gui.exe

@@ -1,0 +1,40 @@
+# Build output
+build/
+build-*/
+out/
+*.exe
+*.o
+*.obj
+*.pdb
+*.a
+*.lib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+cmake_install.cmake
+
+# Editors / IDEs
+.vs/
+.vscode/
+.idea/
+*.user
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archives
+*.zip
+*.tar.gz
+
+# Screenshots / scratch
+screenshots/
+
+# NEVER commit these: WireGuard configs and keys contain private keys
+*.conf
+*.key
+keys.json
+!*.example.conf
