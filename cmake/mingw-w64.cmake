@@ -13,6 +13,10 @@ string(REGEX REPLACE "-.*" "" _arch "${MINGW_TRIPLET}")
 set(CMAKE_SYSTEM_PROCESSOR ${_arch})
 
 set(CMAKE_C_COMPILER   ${MINGW_TRIPLET}-gcc)
+# The CLI is pure C, but SDL3 enables CXX when the GUI is built. Without this,
+# CMake falls back to the host C++ compiler and the link fails on MinGW-only
+# options such as --major-image-version.
+set(CMAKE_CXX_COMPILER ${MINGW_TRIPLET}-g++)
 set(CMAKE_RC_COMPILER  ${MINGW_TRIPLET}-windres)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
